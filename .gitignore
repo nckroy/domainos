@@ -1,0 +1,11 @@
+# Copyrighted firmware and install media: fetch with ./fetch-media.sh
+/roms/**
+!/roms/**/
+!/roms/**/.gitkeep
+
+# Machine state: hard disk image, node ID PROM, MAME cfg/nvram/snapshots
+/disks/*
+!/disks/.gitkeep
+/state/
+
+.DS_Store
