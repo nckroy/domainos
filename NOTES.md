@@ -283,10 +283,13 @@ empty one). The SR10.4 shell has `egrep` but not `grep -E`, and no `head` or
   CRC, so every incoming frame was rejected. Symptoms: the Apollo sends ARP
   requests, the Mac answers (visible with `tcpdump -i feth1`), and the
   Apollo keeps asking; `netstat -i` Ipkts only counts its own broadcasts.
-  Upstream master has the same code (Nov 2026). Fix:
-  `patches/mame0289-pcap-pad-fcs.patch`, built by `tools/build-mame.sh` into
-  `build/mame-apollo` (Apollo-only subtarget). The launchers prefer that
-  binary.
+  Fixed upstream in mamedev/mame#16741 (merged 2026-11-07, after 0.289),
+  which moves `finalise_frame()` into `network_device_base` and uses it for
+  pcap. Until a release with it reaches Homebrew, use
+  `patches/mame0289-pcap-pad-fcs.patch` (the same idea, local to `pcap.cpp`),
+  built by `tools/build-mame.sh` into `build/mame-apollo` (Apollo-only
+  subtarget). The launchers prefer that binary. Once Homebrew MAME is ≥ 0.290,
+  delete `build/mame-apollo` and the patch.
 - Domain/OS side (as root): `/etc/hosts` has `192.168.77.2 node_5a3e1
   dn3500`, `192.168.77.1 mac`, `255.255.255.0 defaultmask`.
   `/etc/rc.local` runs `ifconfig net0 \`/etc/hostname\` netmask defaultmask`
@@ -328,4 +331,4 @@ empty one). The SR10.4 shell has `egrep` but not `grep -E`, and no `head` or
 - [x] Registry (`rpcd`, `glbd`, `rgyd`); `root` and `user` / `-apollo-`
 - [x] TCP/IP on the feth link with the patched MAME: Mac → Apollo ping
       (~8 ms), FTP banner, and a telnet login to `user` on `ttyp0`
-- [ ] Offer `patches/mame0289-pcap-pad-fcs.patch` upstream to MAME
+- [x] pcap fix is upstream already (mamedev/mame#16741); drop the local patch once Homebrew has MAME ≥ 0.290
