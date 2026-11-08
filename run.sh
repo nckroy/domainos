@@ -13,8 +13,11 @@
 # Environment knobs:
 #   RAM=32M        4M, 8M (MAME default), 16M or 32M
 #   MACHINE=dn3500 or dn3500_19i for the 19" monochrome display
-#   NET=en0        attach the 3C505 Ethernet card to a host interface via pcap
-#                  (needs /dev/bpf* access, e.g. Wireshark's ChmodBPF helper)
+#   NET=feth1      attach the 3C505 Ethernet card to a host interface via pcap.
+#                  For the private Mac <-> Apollo link run
+#                  "sudo tools/hostnet.sh up" first (Apollo 192.168.77.2,
+#                  Mac 192.168.77.1). Defaults to feth1 when that exists;
+#                  NET=none turns networking off.
 #   DISK=path      use another disk image (e.g. a scratch copy)
 #   APOLLO_YEARS_BACK=30   Apollo clock = host UTC minus this many years
 #                          (SR10.4 breaks after 2 Nov 1997)
@@ -25,6 +28,10 @@ here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here"
 
 MACHINE="${MACHINE:-dn3500}"
+# Patched Apollo-only MAME (tools/build-mame.sh) fixes pcap networking.
+MAME="${MAME:-mame}"
+[[ -x "$here/build/mame-apollo" && "$MAME" == mame ]] && MAME="$here/build/mame-apollo"
+export MAME
 RAM="${RAM:-32M}"
 DISK="${DISK:-$here/disks/${MACHINE%%_*}-disk1.awd}"
 NODEID="$here/disks/${MACHINE%%_*}-nodeid.ani"
@@ -70,16 +77,19 @@ common=(
   -autoboot_script "$here/tools/apollo.lua" -autoboot_delay 0
 )
 
-if [[ -n "${NET:-}" ]]; then
+if [[ -z "${NET:-}" ]] && ifconfig feth1 >/dev/null 2>&1; then
+  NET=feth1
+fi
+if [[ -n "${NET:-}" && "$NET" != none ]]; then
+  python3 -I "$here/tools/netcfg.py" "$MACHINE" "$NET" >&2 || exit 1
   common+=(-networkprovider pcap)
-  echo "Networking via pcap on $NET: pick the interface in MAME's Network Devices menu (Tab key)." >&2
 else
   common+=(-networkprovider none)
 fi
 
 case "$mode" in
   check)
-    mame "$MACHINE" -rompath "$here/roms" -verifyroms
+    "$MAME" "$MACHINE" -rompath "$here/roms" -verifyroms
     mame -rompath "$here/roms" \
          -hashpath "$(brew --prefix mame)/share/mame/hash" \
          -verifysoftlist apollo_ctape
@@ -87,11 +97,11 @@ case "$mode" in
   install)
     tape="${1:-1}"
     [[ $# -gt 0 ]] && shift
-    exec mame "${common[@]}" -ct "domainos:cass${tape}" "$@"
+    exec "$MAME" "${common[@]}" -ct "domainos:cass${tape}" "$@"
     ;;
   boot)
     export APOLLO_AUTOBOOT="${APOLLO_AUTOBOOT:-1}"
-    exec mame "${common[@]}" "$@"
+    exec "$MAME" "${common[@]}" "$@"
     ;;
   *)
     sed -n '2,16p' "$0" >&2

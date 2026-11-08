@@ -64,10 +64,33 @@ default, and MAME keeps the node ID in `disks/dn3500-nodeid.ani`.
 - [x] MAME 0.289, ROMs and SR10.4 tapes (`./fetch-media.sh`, checksums verified)
 - [x] Domain/OS SR10.4 installed (template `large`), headless as a DSP3500
 - [x] `./run.sh boot` brings a DN3500 up to the Display Manager on its own.
-      Log in as `user`, empty password. Use keypad Enter (fn+Return on a Mac)
-      if Return doesn't submit.
+      Log in as `user` or `root`, password `-apollo-`. Use keypad Enter
+      (fn+Return on a Mac) if Return doesn't submit.
 - [x] Clock fixed to host time minus 30 years (SR10.4's Nov 1997 bug)
-- [ ] Registry, networking
+- [x] Registry (rgyd/glbd/rpcd) created
+- [x] TCP/IP on a private Mac <-> Apollo link (Apollo 192.168.77.2,
+      Mac 192.168.77.1); needs the patched MAME below
+
+## Networking
+
+Homebrew's MAME can't receive network frames on macOS (its pcap backend
+leaves out the Ethernet checksum the Apollo's chip checks), so build the
+patched Apollo-only MAME once, then bring the link up after each Mac reboot:
+
+```bash
+tools/build-mame.sh
+```
+
+```bash
+sudo tools/hostnet.sh up
+```
+
+```bash
+./run.sh boot
+```
+
+Then from the Mac, e.g. `telnet 192.168.77.2` (log in as `user` /
+`-apollo-`).
 
 To shut down: press F1 (CMD) in the DM and type `shut`, wait for the `>`
 prompt, then quit MAME.

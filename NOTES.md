@@ -99,6 +99,18 @@ written for MAME 0.240 / ~2022 and is out of date in places, as noted below.
 - If you move the clock backwards relative to the disk, `calendar` warns
   about duplicate Unique IDs and salvol resets the "last mount" time. That's
   harmless for a fresh install.
+- **Register A must be `0x20`** (32.768 kHz divider on). MAME's fresh RTC
+  has A = `0x00`, which means the clock is stopped. The first hook version
+  didn't set it, so the Apollo time froze at MAME start and the kernel
+  complained once a boot came more than a minute after startup.
+- **`-nothrottle` makes Apollo time run ahead of real time** (emulated
+  seconds pass faster). Domain/OS records that later time at shutdown, so
+  "host minus 30 years" on the next start was behind it and the kernel said
+  "The calendar is more than a minute slow". The hook therefore saves the
+  RTC as Unix seconds to `state/apollo-clock` (every 120 frames and at exit)
+  and on start uses `max(host − N years, saved + 60 s)`.
+- MAME runs the autoboot script it read **at startup** again after each soft
+  reset. Edits to `apollo.lua` only take effect after a MAME restart.
 
 ## DN3500 keyboard injection (`tools/apollo.lua`)
 
@@ -234,6 +246,55 @@ wants a literal `yes`/`no`.
   39 no drive, 38 end of media, 36/35/34 read errors, 31 filemark,
   30 illegal command.
 
+## Registry
+
+Done headless on the DSP3500 (`tools/dsp-boot.sh` / `tools/dsp-shutdown.sh`),
+per the wiki, with a reboot between steps:
+
+1. `touch /etc/daemons/llbd`. On SR10.4 this starts **`rpcd`** (the NCS
+   local location broker), not a process called `llbd`.
+2. `/etc/server /etc/ncs/glbd -create -first -family dds -listen dds &`, then
+   `touch /etc/daemons/glbd`.
+3. `/install/tools/rgy_create` (prints nothing; it creates
+   `/sys/registry/rgy_data/*`), then `touch /etc/daemons/rgyd`.
+
+After that the boot says "Starting standard daemons: ... rpcd glbd rgyd", and
+**`root` and `user` both have password `-apollo-`** (`user` no longer has an
+empty one). The SR10.4 shell has `egrep` but not `grep -E`, and no `head` or
+`hostname` on the default PATH.
+
+## Networking (Mac-only link)
+
+- Host side: `sudo tools/hostnet.sh up` creates a macOS **feth pair**:
+  `feth0` = Mac 192.168.77.1, peered with `feth1`, which MAME attaches to via
+  pcap. It also gives the `access_bpf` group rw on `/dev/bpf*` (root-only by
+  default; no ChmodBPF on this Mac). Neither survives a Mac reboot. Wi-Fi
+  (`en0`) was ruled out: APs drop frames from a second MAC.
+- `run.sh` and `headless.sh` use `NET=feth1` automatically when it exists.
+  `tools/netcfg.py` writes the interface **index** (MAME's `-listnetwork`
+  order) into `state/cfg/<machine>.cfg`.
+- **The cfg `mac` must be Domain/OS's MAC**, which is `08:00:1E` + the 20-bit
+  node ID (`08:00:1e:05:a3:e1` for 5A3E1). With MAME's default
+  `08:00:1e:01:23:45` nothing addressed to the Apollo arrives. `netcfg.py`
+  derives it from the node ID PROM.
+- **Homebrew MAME can't receive over pcap at all.** The pcap backend passes
+  frames as captured: no padding to 60 bytes and no FCS. The TAP backend
+  (Linux) adds both in `finalise_frame()`. The emulated i82586 checks the
+  CRC, so every incoming frame was rejected. Symptoms: the Apollo sends ARP
+  requests, the Mac answers (visible with `tcpdump -i feth1`), and the
+  Apollo keeps asking; `netstat -i` Ipkts only counts its own broadcasts.
+  Upstream master has the same code (Nov 2026). Fix:
+  `patches/mame0289-pcap-pad-fcs.patch`, built by `tools/build-mame.sh` into
+  `build/mame-apollo` (Apollo-only subtarget). The launchers prefer that
+  binary.
+- Domain/OS side (as root): `/etc/hosts` has `192.168.77.2 node_5a3e1
+  dn3500`, `192.168.77.1 mac`, `255.255.255.0 defaultmask`.
+  `/etc/rc.local` runs `ifconfig net0 \`/etc/hostname\` netmask defaultmask`
+  (it shows up as `eth0`). `touch /etc/daemons/{tcpd,inetd,syslogd}`.
+  Eight `ttyp0..7 none dumb off secure` lines were added to `/etc/ttys` for
+  telnet/rlogin. The node name stays `node_5a3e1`; the registry was created
+  under it.
+
 ## Lessons for automating this
 
 - Don't wait only for the prompt you expect. `tools/tx.py` also stops on
@@ -243,6 +304,15 @@ wants a literal `yes`/`no`.
 - Use short waits and re-poll (`tools/tx.py` with no text) for long tape
   jobs. Don't chain several steps in one command.
 - To watch along: `tail -f state/console.log`.
+- `tools/tx.py -- '-apollo-'`: text starting with `-` needs `--`, or argparse
+  takes it as an option. That's why the first root login "failed".
+- Don't write to `state/console.in` before `console.py` has created the FIFO.
+  It becomes a regular file and the bridge silently never reads it. Both
+  scripts now guard against this.
+- Write hook requests atomically (`tools/req.sh`). A plain `echo >` can be
+  read half-written; an empty read once got treated as "unload tape".
+- `pgrep -f 'mame dsp3500'` inside a shell loop also matches that shell's own
+  command line, so the loop waits forever. Use `pgrep -x mame`.
 
 ## Status (2026-11-07)
 
@@ -255,4 +325,7 @@ wants a literal `yes`/`no`.
 - [x] DN3500 boots unattended (`./run.sh boot`) to the Display Manager; login
       as `user` with an empty password gives a shell pad
 - [ ] Normal-mode autoboot (ROM hangs in MAME 0.289; worked around)
-- [ ] Registry (`rgy_create`), networking
+- [x] Registry (`rpcd`, `glbd`, `rgyd`); `root` and `user` / `-apollo-`
+- [x] TCP/IP on the feth link with the patched MAME: Mac → Apollo ping
+      (~8 ms), FTP banner, and a telnet login to `user` on `ttyp0`
+- [ ] Offer `patches/mame0289-pcap-pad-fcs.patch` upstream to MAME

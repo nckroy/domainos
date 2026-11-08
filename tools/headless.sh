@@ -14,18 +14,30 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$here"
+# Patched Apollo-only MAME (tools/build-mame.sh) fixes pcap networking.
+MAME="${MAME:-mame}"
+[[ -x "$here/build/mame-apollo" && "$MAME" == mame ]] && MAME="$here/build/mame-apollo"
+export MAME
 mkdir -p state/cfg state/nvram state/snap
 : > state/console.log
 rm -f state/console.in state/ctape.req
 
-mame dsp3500 \
+# Networking: same rules as run.sh (NET=feth1 by default when it exists)
+if [[ -z "${NET:-}" ]] && ifconfig feth1 >/dev/null 2>&1; then NET=feth1; fi
+netprov=none
+if [[ -n "${NET:-}" && "$NET" != none ]]; then
+  python3 -I tools/netcfg.py dsp3500 "$NET" >&2
+  netprov=pcap
+fi
+
+"$MAME" dsp3500 \
   -rompath "$here/roms" \
   -hashpath "$(brew --prefix mame)/share/mame/hash" \
   -cfg_directory "$here/state/cfg" \
   -nvram_directory "$here/state/nvram" \
   -snapshot_directory "$here/state/snap" \
   -ramsize "${RAM:-32M}" -skip_gameinfo \
-  -video none -sound none -networkprovider none -nothrottle \
+  -video none -sound none -networkprovider "$netprov" -nothrottle \
   -ni "$here/disks/dn3500-nodeid.ani" \
   -disk1 "$here/disks/dn3500-disk1.awd" \
   -rs232 null_modem -bitb socket.127.0.0.1:2323 \

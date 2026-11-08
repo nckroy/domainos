@@ -18,6 +18,7 @@ Waits are short by default; for long jobs call it again with no TEXT.
 import argparse
 import os
 import re
+import stat
 import sys
 import time
 
@@ -38,6 +39,15 @@ def main() -> int:
     ap.add_argument("--raw", action="store_true", help="don't append CR")
     ap.add_argument("--no-errors", action="store_true")
     args = ap.parse_args()
+
+    # Wait for tools/console.py to create its FIFO; writing to a missing path
+    # would create a regular file that the bridge never reads.
+    t_wait = time.time() + 30
+    while not (os.path.exists(FIFO) and stat.S_ISFIFO(os.stat(FIFO).st_mode)):
+        if time.time() > t_wait:
+            print(f"tx.py: {FIFO} is not a FIFO; is tools/console.py running?", file=sys.stderr)
+            return 4
+        time.sleep(0.2)
 
     start = os.path.getsize(LOG)
     if args.text is not None:

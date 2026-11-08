@@ -14,6 +14,7 @@ import argparse
 import os
 import selectors
 import socket
+import stat
 import sys
 import time
 
@@ -28,6 +29,10 @@ def main() -> int:
                     help="seconds between characters sent (the MD has no flow control)")
     args = ap.parse_args()
 
+    # A writer that ran before us may have left a regular file here; that
+    # would silently swallow all input, so always start from a fresh FIFO.
+    if os.path.lexists(args.fifo) and not stat.S_ISFIFO(os.lstat(args.fifo).st_mode):
+        os.remove(args.fifo)
     if not os.path.exists(args.fifo):
         os.mkfifo(args.fifo)
     # O_RDWR keeps the FIFO open between writers, so we never see EOF.

@@ -37,21 +37,88 @@ local function dump()
 	return table.concat(t, " ")
 end
 
+-- Civil date <-> days since 1970-01-01 (proleptic Gregorian, UTC).
+local function days_from_civil(y, m, d)
+	y = (m <= 2) and (y - 1) or y
+	local era = (y >= 0 and y or y - 399) // 400
+	local yoe = y - era * 400
+	local doy = (153 * (m + (m > 2 and -3 or 9)) + 2) // 5 + d - 1
+	local doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+	return era * 146097 + doe - 719468
+end
+
+local function civil_from_days(z)
+	z = z + 719468
+	local era = (z >= 0 and z or z - 146096) // 146097
+	local doe = z - era * 146097
+	local yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+	local y = yoe + era * 400
+	local doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+	local mp = (5 * doy + 2) // 153
+	local d = doy - (153 * mp + 2) // 5 + 1
+	local m = mp + (mp < 10 and 3 or -9)
+	return (m <= 2) and (y + 1) or y, m, d
+end
+
+local function epoch(y, mo, d, h, mi, s)
+	return days_from_civil(y, mo, d) * 86400 + h * 3600 + mi * 60 + s
+end
+
+-- The Apollo's own time as last seen (state/apollo-clock). Under -nothrottle
+-- emulated time runs faster than real time, so Domain/OS can shut down with
+-- a time ahead of "host minus N years"; setting the RTC behind that makes the
+-- kernel stop with "The calendar is more than a minute slow".
+local clockf = os.getenv("APOLLO_CLOCK_FILE") or "state/apollo-clock"
+
+local function read_rtc_epoch()
+	local sp = space()
+	local b = sp:read_u8(RTC + 0x0b)
+	if (b & 0x04) == 0 or sp:read_u8(RTC + 0x0a) & 0x70 ~= 0x20 then return nil end -- not binary / not running
+	local yy = sp:read_u8(RTC + 0x09)
+	local year = (yy >= 70) and (1900 + yy) or (2000 + yy)
+	local mo, d = sp:read_u8(RTC + 0x08), sp:read_u8(RTC + 0x07)
+	if mo < 1 or mo > 12 or d < 1 or d > 31 then return nil end
+	return epoch(year, mo, d, sp:read_u8(RTC + 0x04), sp:read_u8(RTC + 0x02), sp:read_u8(RTC + 0x00))
+end
+
+local function save_clock()
+	local e = read_rtc_epoch()
+	if not e then return end
+	local f = io.open(clockf, "w")
+	if f then f:write(tostring(e) .. "\n"); f:close() end
+end
+
 local function set_clock()
 	local sp = space()
 	local u = os.date("!*t") -- host time, UTC
-	local year = u.year - years_back
+	local target = epoch(u.year - years_back, u.month, u.day, u.hour, u.min, u.sec)
+	local why = string.format("host minus %d years", years_back)
+	local f = io.open(clockf, "r")
+	if f then
+		local saved = tonumber(f:read("*l") or "")
+		f:close()
+		if saved and saved + 60 > target then
+			target = saved + 60
+			why = "last Apollo time + 60 s"
+		end
+	end
+	local days = target // 86400
+	local secs = target % 86400
+	local y, mo, d = civil_from_days(days)
+	local h, mi, s = secs // 3600, (secs % 3600) // 60, secs % 60
 	sp:write_u8(RTC + 0x0b, 0x86) -- SET (halt updates) | binary | 24h
-	sp:write_u8(RTC + 0x00, u.sec)
-	sp:write_u8(RTC + 0x02, u.min)
-	sp:write_u8(RTC + 0x04, u.hour)
-	sp:write_u8(RTC + 0x06, u.wday) -- 1 = Sunday (weekday of the host date)
-	sp:write_u8(RTC + 0x07, u.day)
-	sp:write_u8(RTC + 0x08, u.month)
-	sp:write_u8(RTC + 0x09, year % 100)
+	sp:write_u8(RTC + 0x00, s)
+	sp:write_u8(RTC + 0x02, mi)
+	sp:write_u8(RTC + 0x04, h)
+	sp:write_u8(RTC + 0x06, (days + 4) % 7 + 1) -- 1 = Sunday
+	sp:write_u8(RTC + 0x07, d)
+	sp:write_u8(RTC + 0x08, mo)
+	sp:write_u8(RTC + 0x09, y % 100)
+	sp:write_u8(RTC + 0x0a, 0x20) -- divider on (32.768 kHz); 0x00 = clock stopped
 	sp:write_u8(RTC + 0x0b, 0x06) -- run: binary | 24h
-	log(string.format("clock set to %04d-%02d-%02d %02d:%02d:%02d UTC (host minus %d years); rtc %s",
-		year, u.month, u.day, u.hour, u.min, u.sec, years_back, dump()))
+	log(string.format("clock set to %04d-%02d-%02d %02d:%02d:%02d UTC (%s); rtc %s",
+		y, mo, d, h, mi, s, why, dump()))
+	save_clock()
 end
 
 local function tape()
@@ -120,12 +187,18 @@ local boot_steps = {
 }
 
 local clock_done = false
+frames = 0
+
+stop_sub = emu.add_machine_stop_notifier(save_clock)
 
 frame_sub = emu.add_machine_frame_notifier(function()
 	if not clock_done then
 		clock_done = true
 		set_clock()
 	end
+
+	frames = frames + 1
+	if frames % 120 == 0 then save_clock() end -- survives kill -9 too
 
 	pump_typing()
 	if autoboot and boot_steps[1] and manager.machine.time.seconds >= boot_steps[1].at then
@@ -137,6 +210,7 @@ frame_sub = emu.add_machine_frame_notifier(function()
 	if not f then return end
 	local line = (f:read("*l") or ""):gsub("%s+$", "")
 	f:close()
+	if line == "" then return end -- caught mid-write; read it again next frame
 	os.remove(req)
 
 	if line == "dump" then
@@ -164,7 +238,7 @@ frame_sub = emu.add_machine_frame_notifier(function()
 		local img = tape()
 		if not img then log("no ctape device"); return end
 		img:unload()
-		if line == "unload" or line == "" then
+		if line == "unload" then
 			log("tape unloaded")
 		else
 			local err = img:load(line)
