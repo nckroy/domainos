@@ -41,7 +41,67 @@ brew install mame
 ```
 
 Defaults: 32 MB RAM, colour display, windowed. Override with
-`RAM=8M`, `MACHINE=dn3500_19i` (19" mono), `NET=en0` (pcap networking).
+`RAM=8M`, `MACHINE=dn3500_19i` (19" mono), `NET=none` (no networking; by
+default it attaches to `feth1` when that exists, see Networking).
+
+## Using the Apollo
+
+### Booting
+
+```bash
+./run.sh boot
+```
+
+A MAME window opens on the DN3500's 1024×800 screen. It boots by itself in
+about 2–3 minutes:
+
+1. The boot monitor `>` prompt appears, and `tools/apollo.lua` types
+   `ex domain_os`.
+2. The kernel loads and the `)` bootshell prompt appears. About 90 s
+   (emulated) after start the script types `go`. **If it's still sitting at
+   `)`, `go` arrived too early: click in the window, type `go` and press
+   Return.**
+3. Domain/OS starts, and the Display Manager (DM) shows `login:` in the input
+   strip at the bottom of the screen.
+
+### Logging in
+
+- **The DM sends keystrokes to the window under the cursor.** Your Mac mouse
+  moves the Apollo cursor while it's over the MAME window, so put it over the
+  bottom input strip before typing.
+- Log in as `user` or `root`, password **`-apollo-`**.
+- If Return doesn't submit, use **fn+Return**, which sends keypad Enter. The
+  DM reliably accepts that.
+- After login you get a shell pad with a `$` prompt.
+
+### Keyboard and mouse
+
+- F1–F12 are the Apollo's special keys. They're labelled in the strip under the
+  screen (F1 = SHELL/CMD, F11 = ABORT/EXIT...). On a Mac keyboard you may
+  need to hold **fn** to send F-keys.
+- Without options, the Apollo cursor just follows your mouse over the window.
+  `./run.sh boot -mouse` makes MAME capture the pointer for proper Apollo
+  mouse input. To get it back, switch to MAME's UI keys (UI Toggle, below)
+  and press **P** to pause.
+
+### Shutting down
+
+Always shut Domain/OS down before closing the window. Otherwise the next boot
+stops with "BOOT VOLUME NEEDS SALVAGING" and the disk has to be checked (see
+NOTES.md).
+
+1. Press **F1** (CMD) to get the DM command line.
+2. Type `shut` and press Return.
+3. Wait for the `>` boot monitor prompt, then close the MAME window.
+
+Closing the window exits MAME cleanly, which saves its settings. Don't
+`kill -9` it.
+
+### Don't run two at once
+
+`./run.sh boot` (DN3500 with display) and `tools/headless.sh` (DSP3500,
+used for scripted maintenance) use **the same disk image**. Run only one at
+a time.
 
 ### MAME keys
 
@@ -73,9 +133,11 @@ default, and MAME keeps the node ID in `disks/dn3500-nodeid.ani`.
 
 ## Networking
 
-Homebrew's MAME can't receive network frames on macOS (its pcap backend
-leaves out the Ethernet checksum the Apollo's chip checks), so build the
-patched Apollo-only MAME once, then bring the link up after each Mac reboot:
+Homebrew's MAME 0.289 can't receive network frames on macOS (its pcap backend
+leaves out the Ethernet checksum the Apollo's chip checks; fixed upstream in
+mamedev/mame#16741, after 0.289). Until Homebrew ships 0.290 or later, build
+the patched Apollo-only MAME once, then bring the link up after each Mac
+reboot:
 
 ```bash
 tools/build-mame.sh
@@ -89,10 +151,8 @@ sudo tools/hostnet.sh up
 ./run.sh boot
 ```
 
-Then from the Mac, e.g. `telnet 192.168.77.2` (log in as `user` /
-`-apollo-`).
-
-To shut down: press F1 (CMD) in the DM and type `shut`, wait for the `>`
-prompt, then quit MAME.
+The Apollo is then `192.168.77.2` (the Mac is `192.168.77.1`), running telnet,
+rlogin, rsh and ftp. macOS doesn't ship a telnet client; `brew install telnet`,
+then `telnet 192.168.77.2` and log in as `user` / `-apollo-`.
 
 See [NOTES.md](NOTES.md) for how it all works and what was weird.
