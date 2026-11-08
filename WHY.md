@@ -6,6 +6,7 @@
 
 ### The Evolution Pathway
 
+```mermaid
 graph TD
     A["Apollo Aegis / Domain/OS"] -->|Inspired network-transparent concepts| B["Apollo Network Computing System (NCS)<br>(1987)"]
     B -->|Contributed to OSF consortium| C["OSF Distributed Computing Environment (DCE/RPC)<br>(Early 1990s)"]
@@ -15,6 +16,7 @@ graph TD
     style B fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
     style C fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     style D fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+```
 
 ---
 
