@@ -6,16 +6,17 @@
 
 ### The Evolution Pathway
 
-[Apollo Aegis / Domain/OS]
-│ (Inspired network-transparent concepts)
-▼
+[Apollo Aegis / Domain/OS] 
+         │ (Inspired network-transparent concepts)
+         ▼
 [Apollo Network Computing System (NCS)] (1987)
-│ (Contributed to OSF consortium)
-▼
+         │ (Contributed to OSF consortium)
+         ▼
 [OSF Distributed Computing Environment (DCE/RPC)] (Early 1990s)
-│ (Licensed and adapted by Microsoft)
-▼
+         │ (Licensed and adapted by Microsoft)
+         ▼
 [Microsoft Windows RPC (MSRPC)] (Windows NT to Present)
+
 
 ---
 
