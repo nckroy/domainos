@@ -5,6 +5,10 @@ DN3500 (68030 @ 25 MHz, 4–32 MB RAM, OMTI 8621 ESDI controller, Archive SC-499
 cartridge tape, 3Com 3C505 Ethernet, 8-plane colour display). MAME 0.289 is
 installed via Homebrew (`brew install mame`) and runs natively on Apple silicon.
 
+**Before trying the install, read [NOTES.md](NOTES.md).** It covers MAME
+0.289 quirks, the broken clock, headless console tricks, and the answers to
+every installer prompt.
+
 ## Layout
 
 ```
@@ -50,29 +54,22 @@ Defaults: 32 MB RAM, colour display, windowed. Override with
 ### Machine configuration
 
 The DN3500 starts in **Service** mode by default and drops to the Mnemonic
-Debugger (`>` prompt). That's what you want for installing from tape. Once the
-system is installed, switch to **Normal** in Machine Configuration so it
-boots on its own. "Node ID from Disk" is on by default, and MAME keeps the
-node ID in `disks/dn3500-nodeid.ani`.
+Debugger (`>` prompt). **Leave it in Service mode**: Normal-mode autoboot
+hangs in MAME 0.289. `./run.sh boot` types `ex domain_os` and `go` for you
+instead (`APOLLO_AUTOBOOT=0` turns that off). "Node ID from Disk" is on by
+default, and MAME keeps the node ID in `disks/dn3500-nodeid.ani`.
 
 ## Status
 
-- [x] MAME installed, DN3500 driver present, launcher written
-- [x] Boot ROMs in `roms/dn3500/` and `roms/3c505/`, from bitsavers `bits/Apollo/firmware/`
-- [x] SR10.4 install tapes in `roms/apollo_ctape/domainos/`, from bitsavers `bits/Apollo/SR10.4/`
-      (all SHA1s match MAME's records; `./run.sh check` passes)
-- [x] Boots to the Mnemonic Debugger `>` prompt with tape 1 loaded
-- [ ] Disk formatted and Domain/OS installed
+- [x] MAME 0.289, ROMs and SR10.4 tapes (`./fetch-media.sh`, checksums verified)
+- [x] Domain/OS SR10.4 installed (template `large`), headless as a DSP3500
+- [x] `./run.sh boot` brings a DN3500 up to the Display Manager on its own.
+      Log in as `user`, empty password. Use keypad Enter (fn+Return on a Mac)
+      if Return doesn't submit.
+- [x] Clock fixed to host time minus 30 years (SR10.4's Nov 1997 bug)
+- [ ] Registry, networking
 
-## Disk and node ID
+To shut down: press F1 (CMD) in the DM and type `shut`, wait for the `>`
+prompt, then quit MAME.
 
-MAME 0.289 won't create these files itself here, so `run.sh` creates them on
-first run:
-
-- `disks/dn3500-disk1.awd`: blank 348 MB Maxtor EXT-4380-E ESDI disk
-  (1223 cyl × 15 heads × 18 sectors × 1056 bytes, filled with 0x55, as MAME's
-  own create routine would).
-- `disks/dn3500-nodeid.ani`: 32-byte node ID PROM. The node ID defaults to
-  `5A3E1`. Set `NODE_ID=xxxxx` (hex) before the first run to pick another one.
-
-Delete either file to start over.
+See [NOTES.md](NOTES.md) for how it all works and what was weird.

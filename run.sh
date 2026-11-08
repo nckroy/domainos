@@ -3,7 +3,9 @@
 #
 #   ./run.sh check            verify ROMs and install tapes are in place
 #   ./run.sh install [N]      boot with install tape N (1-5, default 1) loaded
-#   ./run.sh boot             boot from the hard disk (no tape)
+#   ./run.sh boot             boot Domain/OS from the hard disk: types
+#                             "ex domain_os" and "go" for you (APOLLO_AUTOBOOT=0
+#                             to stop at the MD ">" prompt instead)
 #
 # Extra arguments after the mode are passed straight to MAME, e.g.
 #   ./run.sh boot -window -nomaximize
@@ -13,6 +15,9 @@
 #   MACHINE=dn3500 or dn3500_19i for the 19" monochrome display
 #   NET=en0        attach the 3C505 Ethernet card to a host interface via pcap
 #                  (needs /dev/bpf* access, e.g. Wireshark's ChmodBPF helper)
+#   DISK=path      use another disk image (e.g. a scratch copy)
+#   APOLLO_YEARS_BACK=30   Apollo clock = host UTC minus this many years
+#                          (SR10.4 breaks after 2 Nov 1997)
 
 set -euo pipefail
 
@@ -21,7 +26,7 @@ cd "$here"
 
 MACHINE="${MACHINE:-dn3500}"
 RAM="${RAM:-32M}"
-DISK="$here/disks/${MACHINE%%_*}-disk1.awd"
+DISK="${DISK:-$here/disks/${MACHINE%%_*}-disk1.awd}"
 NODEID="$here/disks/${MACHINE%%_*}-nodeid.ani"
 NODE_ID="${NODE_ID:-5A3E1}"   # 20-bit hex Apollo node ID (only used on first run)
 
@@ -61,6 +66,8 @@ common=(
   -window -nomaximize
   -ni "$NODEID"
   -disk1 "$DISK"
+  # clock fix (host UTC minus APOLLO_YEARS_BACK, default 30) + tape swaps
+  -autoboot_script "$here/tools/apollo.lua" -autoboot_delay 0
 )
 
 if [[ -n "${NET:-}" ]]; then
@@ -83,6 +90,7 @@ case "$mode" in
     exec mame "${common[@]}" -ct "domainos:cass${tape}" "$@"
     ;;
   boot)
+    export APOLLO_AUTOBOOT="${APOLLO_AUTOBOOT:-1}"
     exec mame "${common[@]}" "$@"
     ;;
   *)
