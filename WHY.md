@@ -1,5 +1,7 @@
 # The Lineage of Microsoft Windows RPC (MSRPC)
 
+A quick note about why I think Apollo's Aegis / Domain system architecture is interesting enough to still play with...
+
 **Apollo Computer's distributed technology is a direct ancestor of Windows RPC.** However, the specific lineage flows through Apollo's **Network Computing System (NCS)** and the **Open Software Foundation's DCE/RPC**, rather than its Aegis operating system directly. 
 
 ---
